@@ -132,3 +132,6 @@ dmypy.json
 .Rdata
 .Rhistory
 .Rproj.user
+
+data/biclustering*
+data_anonymizer.py

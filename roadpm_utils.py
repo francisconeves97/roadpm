@@ -1,15 +1,16 @@
 import numpy as np
 import plotly.graph_objects as go
 import dash_html_components as html
-from pathlib import Path
 import subprocess
 import re
 import hashlib
 import gui_utils
 from arff2pandas import a2p
+import pandas as pd
+import os
 
-DOWNLOADS_PATH = str(Path(__file__).parent.parent.parent.parent) + '/data/temp'
-JAR_DIRECTORY = str(Path(__file__).parent)
+DOWNLOADS_PATH = str(os.path.abspath(os.path.dirname(__file__))) + '/data/'
+JAR_DIRECTORY = str(os.path.dirname(__file__))
 
 
 def get_waze_events(start_date, end_date, geojson, days):
@@ -123,11 +124,26 @@ class Biclustering:
         min_date, max_date = self.transactions['Day'].iloc[0], self.transactions['Day'].iloc[
             len(self.transactions.index) - 1]
         filename = 'biclustering_{}-{}-{}-{}'.format(min_date, max_date, self.dataset, hash_params(self.parameters))
-        file_path = '{}/{}'.format(DOWNLOADS_PATH, filename)
+        file_path = '{}{}'.format(DOWNLOADS_PATH, filename)
         return file_path
 
     def export_transactions(self):
         data = None
+        for attr in self.series.columns:
+            new_columns = self.transactions.pivot('Day', 'Hour', attr)
+            new_columns = self.replace_missing_values(new_columns, attr)
+
+            if self.dataset != 'integrative':
+                if attr.startswith('speed') or attr.startswith('spatial_extension') or attr.startswith('delay'):
+                    new_columns = new_columns.add_prefix('{}_'.format(attr))
+                else:
+                    new_columns = new_columns.add_suffix('_{}'.format(attr))
+            else:
+                new_columns = new_columns.add_suffix('_{}'.format(attr))
+            if data is None:
+                data = new_columns
+            else:
+                data = pd.concat([data, new_columns], axis=1, sort=False)
         file_path = self.get_file_path()
         # Reorder columns
         data = data.reindex(sorted(data.columns), axis=1)
@@ -234,7 +250,7 @@ def hash_params(params):
     return hashlib.sha256(str(params).encode('utf-8')).hexdigest()
 
 
-def parse_bics_from_file(file_path, context=None, cutpoints=None):
+def parse_bics_from_file(file_path):
     f = open(file_path, 'r')
     contents = f.read()
 
@@ -248,8 +264,7 @@ def parse_bics_from_file(file_path, context=None, cutpoints=None):
         cols = parse_string_list(cols)
         real_matrix = parse_matrix(real_matrix)
         matrix = parse_matrix(matrix)
-        bics.append({'cols': cols, 'real_matrix': real_matrix, 'matrix': matrix, 'pvalue': pvalue, 'area': area,
-                     'context': context, 'cutpoints': cutpoints})
+        bics.append({'cols': cols, 'real_matrix': real_matrix, 'matrix': matrix, 'pvalue': pvalue, 'area': area})
     return bics
 
 
@@ -260,21 +275,17 @@ class BicPamsPyWrapper:
             parameters += bicpams_parameters[key]
         self.parameters = parameters
 
-    def run(self, input_file, params, context_file=None, context_coherence_strength=None, context_items_removal=None,
-            context_var=None, cutpoints=None):
+    def run(self, input_file, params):
         args = ['java', '-cp', '"bicpams.jar:lib/*"', 'tests.others.BicFranciscoTests']
         for param in self.parameters:
             name = param['name']
             value = params[name]
             args += ['--{}'.format(name), '{}'.format(value)]
         args += ['--file_path', input_file]
-        if context_file is not None:
-            args += ['--context_file_path', context_file]
-            args += ['--context_coherency_strength', context_coherence_strength]
-            args += ['--context_remove_items', context_items_removal]
+
         command = ' '.join(args)
         print('Running {}'.format(command))
         subprocess.call(command, cwd=JAR_DIRECTORY, shell=True)
         output_file = '{}.bics'.format(input_file.split('.arff')[0])
 
-        return parse_bics_from_file(output_file, context=context_var, cutpoints=cutpoints)
+        return parse_bics_from_file(output_file)

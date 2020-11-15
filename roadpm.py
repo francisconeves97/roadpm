@@ -64,7 +64,7 @@ def get_all_method_params():
     return res
 
 
-pagetitle = 'Descrição: Padrões no trânsito rodoviário'
+pagetitle = 'Biclustering'
 prefix = 'padroes_rodovia'
 
 parameters = [
@@ -118,7 +118,7 @@ def get_state_field(field: str, accessor: str = 'value', prefix: str = '', type=
     return value
 
 
-def biclustering_handler(speed_time_series, dataset):
+def biclustering_handler(speed_time_series, dataset, prefix=prefix):
     state_params = dash.callback_context.states
     # remove prefix and .value from
     params = {}
@@ -227,7 +227,7 @@ def show_bicluster_plot(sel_bics, bics, plot_type, *args):
         if bic_i == 'no_biclusters_available_yet':
             break
         bic = bics[int(bic_i) - 1]
-        fig = get_biclustering_vis(bic, plot_type, bics)
+        fig = get_biclustering_vis(bic, plot_type)
         figs.append(get_graph(fig, 'Bicluster {} - pvalue {:.4g}'.format(bic_i, float(bic['pvalue']))))
     return figs
 
@@ -312,9 +312,6 @@ def run_discovery(n_clicks, attributes, *args):
     filename = 'dataset_{}{}-{}{}-{}'.format(start_date, start_hour, end_date, end_hour, dataset)
     file_path = '{}/{}'.format(DOWNLOADS_PATH, filename)
     time_series_orig.between_time(start_hour, end_hour).to_csv('{}.csv'.format(file_path))
-
-    if not data_cached:
-        locations.to_csv('{}-locations.csv'.format(file_path))
 
     res, bics = biclustering_handler(time_series, dataset)
     bic_options = get_multidrop_options('Bicluster {}', range(1, len(bics) + 1))
